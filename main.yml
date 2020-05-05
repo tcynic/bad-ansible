@@ -1,56 +1,20 @@
 ---
-# Bad ansible! This playbook is an example of poor/bad practices!
-# Bad practices may include:
-#
-#   Poor formatting and structure
-#   Poor use of YAML - but good enough to parse
-#   Inconsistent style
-#   Incorrect use of modules
-#   Poor module choice
-#   Unclear names
-#   Hard coding / poor use of variables
-#   Roles - what are roles?
-#   Bare variables
-#   No use of handlers
-
-- name: configuration
+- name: Common Configuration
   hosts: all
-  gather_facts: false # remove later! speeds up testing
+  gather_facts: false
   become: true
-  tasks:
-
-  - name: enable repos
-    template:
-      src: ./open_three-tier-app.repo
-      dest: /etc/yum.repos.d/open_three-tier-app.repo
-      mode: 0644
+  roles:
+  - three_tier_common
 
 - name: deploy haproxy
-  hosts: frontends
-  gather_facts: false # remove later! speeds up testing
+  hosts: frontends,apps
+  gather_facts: true
   become: true
-
   tasks:
-  - name: http
-    package:
-      name: httpie
-      state: latest
-  - name: install HAProxy
-    yum:
-      name=haproxy state=latest
-  - name: enable HAProxy
-    service:
-      name: haproxy
-      state: started
-  - name: configure haproxy
-    template:
-      src: ./haproxy.cfg.j2
-      dest: /etc/haproxy/haproxy.cfg
-  - name: restart HAproxy
-    service:
-      name: haproxy
-      state: restarted
-
+  - include_role:
+      name: three_tier_frontend
+    when: >-
+      'frontends' in group_names
 
 - name: deploy tomcat
   hosts: apps
@@ -83,18 +47,17 @@
       name: tomcat
       state: started
 
-  - name: ensure index path
-    file:
-      path: /usr/share/tomcat/webapps/ansible/
-      state: directory
-
-
 - name: index.html on app 1
   hosts: app1
   gather_facts: false
   become: true
 
   tasks:
+  - name: create ansible tomcat directory
+    file:
+      path: /usr/share/tomcat/webapps/ansible
+      state: directory
+
   - name: copy static index.html to tomcat webapps/ansible/index.html
     template:
       src: index.html.app1
@@ -106,6 +69,11 @@
   become: true
 
   tasks:
+  - name: create ansible tomcat directory
+    file:
+      path: /usr/share/tomcat/webapps/ansible
+      state: directory
+
   - name: copy static index.html to tomcat webapps/ansible/index.html
     template:
       src: index.html.app2
@@ -117,34 +85,36 @@
   become: true
   hosts: appdbs
   tasks:
+  - name: install progress
+    command: "yum install -y postgresql-server"
 
-#  - name: install progress
-#    command: "yum install -y postgresql-server"
-
-  - name: install postgres
-    yum:
-      name: postgresql-server
-      state: latest
-  - name: enable apache at boot
+  #- name: install postgres
+  #  yum:
+  #    name: postgresql-server
+  #    state: latest
+  - name: enable postgresql at boot
     service:
       name: postgresql
       enabled: yes
-#  - name: tell user to finish setting up postgres
-#    debug:
-#      msg: "Either uncomment the postgres setup or manually login and initialize"
+  - name: tell user to finish setting up postgres
+    debug:
+      msg: "Either uncomment the postgres setup or manually login and initialize"
 
  # only run the next 2 tasks once!
   - name: initilize postgres
     command: postgresql-setup initdb
-    args:
-      creates: /var/lib/pgsql/initdb.log 
+    register: r_postgres_init
+    failed_when: >-
+      r_postgres_init.rc != 0 and
+      r_postgres_init.stdout != 'Data directory is not empty!'
+
 
 #  - name: initilize postgres some more
 #    command: chkconfig postgresql on
-#  - name: start postgres
-#    service:
-#      name: postgresql.service
-#      state: started
+  - name: start postgres
+    service:
+      name: postgresql.service
+      state: started
 
 - name: deploy apache
   hosts: apps
@@ -163,10 +133,4 @@
 #  - name: start apache
 #    service:
 #      name: httpd
-#      state: started
-
-#  handlers:
-#  - name: start_posgres
-#    service: 
-#      name: postgresql.service
 #      state: started
