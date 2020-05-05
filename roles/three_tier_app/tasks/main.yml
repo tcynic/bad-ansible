@@ -3,7 +3,7 @@
   yum:
     name:
       - httpd
-    - tomcat
+      - tomcat
     state: latest
 
 - name: create ansible tomcat directory
