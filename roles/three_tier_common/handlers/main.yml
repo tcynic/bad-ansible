@@ -1,3 +1,3 @@
 ---
 - name: yum-clean-all
-  include_tasks: yum-clean-all.yaml
+  include_tasks: yum-clean-all.yml
